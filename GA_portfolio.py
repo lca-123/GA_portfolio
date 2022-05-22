@@ -141,7 +141,7 @@ class Portfolio_Selection():
         随机选择一个时期的数据运行模型，画出期望效用图
         """
         if self.random_state is not None:
-            np.random.seed(self.random_state+1)
+            np.random.seed(self.random_state)
 
         t1=self.t
         t2=len(self.data)  
@@ -161,7 +161,7 @@ class Portfolio_Selection():
                 return_data=return_data,
                 money=self.money,
                 s=self.s,
-                random_state=int(np.random.rand()*10000),
+                random_state=int(np.random.rand()*10000+i_candidates),
                 candidates=i_candidates,
                 max_iter=max_max_iter)
             p.ga()
@@ -351,7 +351,7 @@ class Portfolio_GA():
         max_iter=self.max_iter
         
         # 生成初始参数
-        params=[np.random.dirichlet([1]*self.n_portfolio,1)[0] for i in range(candidates)]
+        params=[np.random.dirichlet([0.5]*self.n_portfolio,1)[0] for i in range(candidates)]
 
         # 计算初始适应函数
         fitness_value=[]
@@ -371,13 +371,17 @@ class Portfolio_GA():
 
             # 选取表现最好的中间结果储存
             _index = index[0]
-            each_iter_exp_utility.append(self._cal_ex_utility_(params[_index]))
+            each_iter_exp_utility.append(np.mean(np.array(fitness_value)[index]))
             each_iter_std.append(np.std(np.array(fitness_value)[index]))
           
 
             mutate_intension=1/(iter+1)
             for i in [i for i in range(int(candidates/2)*2)][::2]:
-                new_param = (np.array(params[index[i]])+np.array(params[index[i+1]]))/2
+
+                r1=fitness_value[index[i]]
+                r2=fitness_value[index[i+1]]
+                
+                new_param = (np.array(params[index[i]])*r1+np.array(params[index[i+1]])*r1)/(r1+r2)
 
                 # 变异
                 _i=np.random.uniform()
