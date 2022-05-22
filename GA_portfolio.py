@@ -1,3 +1,4 @@
+from ctypes import util
 import numpy as np
 
 # 使用滑动时间窗口进行投资组合选择
@@ -132,7 +133,7 @@ class Portfolio_Selection():
         p.ga()
         return p.each_iter_exp_utility,p.each_iter_std
     
-    def cal_best_candidates(self) -> list:
+    def cal_best_candidates(self,candidates_list,max_max_iter=50) -> list:
         """
         根据论文方法，选取最佳的候选解
         还没实现
@@ -140,12 +141,36 @@ class Portfolio_Selection():
         随机选择一个时期的数据运行模型，画出期望效用图
         """
         if self.random_state is not None:
-            np.random.seed(self.random_state)
+            np.random.seed(self.random_state+1)
 
         t1=self.t
         t2=len(self.data)  
 
         _t=np.random.randint(t1,t2)
+
+        his_data=self.data[range(_t-t1,_t)]
+        return_data=self.data[range(_t,_t+self.period)]
+
+        utility_list=[]
+        std_list=[]
+
+        for i_candidates in candidates_list:
+            # 生成模型
+            p=Portfolio_GA(
+                his_data=his_data,
+                return_data=return_data,
+                money=self.money,
+                s=self.s,
+                random_state=int(np.random.rand()*10000),
+                candidates=i_candidates,
+                max_iter=max_max_iter)
+            p.ga()
+            utility_list.append(p.each_iter_exp_utility)
+            std_list.append(p.each_iter_std)
+        
+        return utility_list,std_list
+
+
 
     def update_parmaters(self,candidates=None,max_iter=None):
         """
@@ -302,7 +327,7 @@ class Portfolio_GA():
         return np.sum(np.log(assert_each_return)*p)
 
 
-    def ga(self):
+    def ga(self,mutate_rate=1.0):
         """
         使用遗传算法计算最佳投资组合
 
@@ -321,6 +346,7 @@ class Portfolio_GA():
 
         if self.random_state is not None:
             np.random.seed(self.random_state)
+        
         candidates=self.candidates
         max_iter=self.max_iter
         
@@ -344,17 +370,18 @@ class Portfolio_GA():
             index=list(np.argsort(fitness_value))[::-1][:int(candidates/2)*2]
 
             # 选取表现最好的中间结果储存
-            _index = np.argmax(fitness_value)
+            _index = index[0]
             each_iter_exp_utility.append(self._cal_ex_utility_(params[_index]))
             each_iter_std.append(np.std(np.array(fitness_value)[index]))
           
 
+            mutate_intension=1/(iter+1)
             for i in [i for i in range(int(candidates/2)*2)][::2]:
                 new_param = (np.array(params[index[i]])+np.array(params[index[i+1]]))/2
 
                 # 变异
                 _i=np.random.uniform()
-                if _i < 0.6667:
+                if _i < mutate_rate:
                     a,b = np.random.randint(0,self.n_portfolio-1,size=2)
                     while a == b:
                         b = np.random.randint(0,self.n_portfolio-1,size=1)
@@ -363,7 +390,7 @@ class Portfolio_GA():
                     # new_param[a],new_param[b]=new_param[b],new_param[a]
                 
                     # 方法二 随机选取两个持仓 将一个持仓的一部分加入另一个持仓
-                    x=np.random.uniform(0,new_param[a]*0.9)
+                    x=np.random.uniform(0,new_param[a]*mutate_intension)
                     new_param[a]=new_param[a]-x
                     new_param[b]=new_param[b]+x
 
