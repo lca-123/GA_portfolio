@@ -38,50 +38,65 @@ class Portfolio_Selection():
         self.candidates=candidates
         self.max_iter=max_iter
     
-    def fit(self):
+    def fit(self,method='ga'):
         """"
         拟合模型
+
+        Paramter
+        ----------
+        method: str {'ga','markowitz','bayes'}, default 'ga'
+            使用马科维茨、贝叶斯、遗传算法求解
+
+        Returns
+        ----------
+        tuple: (moneys,exp_return,weights)
+            净值数据，收益率数据，权重数据
         """
 
         if self.random_state is not None:
             np.random.seed(self.random_state)
         
+        t1=self.t
+        t2=len(self.data)-1
         
         moneys = [self.money]
         exp_return=[]
-        utility=[]
         weights=[]
-
-        t1=self.t
-        t2=len(self.data)-1
 
         for _t in range(t1,t2,self.period):
             # 划分数据集
             his_data=self.data[range(_t-t1,_t)]
             return_data=self.data[range(_t,_t+self.period)]
 
-            # 生成模型
-            p=Portfolio_GA(
-                his_data=his_data,
-                return_data=return_data,
-                money=moneys[-1],
-                s=self.s,
-                random_state=int(np.random.rand()*10000),
-                candidates=self.candidates,
-                max_iter=self.max_iter)
-            
-            # 储存结果
-            utility.append(p.ga())
-            exp_return.append(p.cal_return())
-            moneys.append(p.cal_money())
-            weights.append(p.get_weights())
+            if method=='ga':
+                # 生成模型
+                p=Portfolio_GA(
+                    his_data=his_data,
+                    return_data=return_data,
+                    money=moneys[-1],
+                    s=self.s,
+                    random_state=int(np.random.rand()*10000),
+                    candidates=self.candidates,
+                    max_iter=self.max_iter)
+                
+                # 储存结果
+                exp_return.append(p.ga())
+                moneys.append(p.cal_money())
+                weights.append(p.get_weights())
+
+            elif method=='markowitz':
+                pass
+
+            elif method=='bayes':
+                pass
         
         self.is_fit=True
 
         self.moneys=moneys
         self.exp_return=exp_return
-        self.utility=utility
         self.weights=weights
+
+        return moneys,exp_return,weights
    
     def get_sharpe(self) -> float:
         """
@@ -100,8 +115,6 @@ class Portfolio_Selection():
     def cal_best_iter(self,max_max_iter=50) -> list:
         """
         根据论文方法，选取最佳的迭代次数
-        还没实现
-
         随机选择一个时期的数据运行模型，画出期望效用和标准差图
 
         Paramters
