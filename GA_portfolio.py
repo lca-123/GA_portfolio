@@ -19,9 +19,14 @@ class Portfolio_Selection():
         历史数据窗口期
     random_state: int or none
         随机数种子
+    candidates: int or none
+        候选解个数，若为空则默认30
+    max_iter: int or none
+        最大迭代次数，若为空则默认10 
     """
 
-    def __init__(self,data,money=1000,s=5,t=60,period=1,random_state=None):
+    def __init__(self,data,money=1000,s=5,t=60,period=1,
+    random_state=None,candidates=30,max_iter=10):
         self.data=data
         self.money=money
         self.s=s
@@ -29,6 +34,8 @@ class Portfolio_Selection():
         self.period=period
         self.random_state=random_state
         self.is_fit=False
+        self.candidates=candidates
+        self.max_iter=max_iter
     
     def fit(self):
         """"
@@ -37,6 +44,7 @@ class Portfolio_Selection():
 
         if self.random_state is not None:
             np.random.seed(self.random_state)
+        
         
         moneys = [self.money]
         exp_return=[]
@@ -57,7 +65,9 @@ class Portfolio_Selection():
                 return_data=return_data,
                 money=moneys[-1],
                 s=self.s,
-                random_state=int(np.random.rand()*10000))
+                random_state=int(np.random.rand()*10000),
+                candidates=self.candidates,
+                max_iter=self.max_iter)
             
             # 储存结果
             utility.append(p.ga())
@@ -86,12 +96,66 @@ class Portfolio_Selection():
         """
         return self.weights
     
-    def get_best_paramter(self):
+    def cal_best_iter(self,max_max_iter=50) -> list:
         """
-        根据论文方法，选取最佳的候选解和迭代次数
+        根据论文方法，选取最佳的迭代次数
         还没实现
+
+        随机选择一个时期的数据运行模型，画出期望效用和标准差图
+
+        Paramters
+        ----------
+        max_max_iter: int, default 50
+            迭代次数上限
         """
-        pass
+        if self.random_state is not None:
+            np.random.seed(self.random_state)
+
+        t1=self.t
+        t2=len(self.data)  
+
+        _t=np.random.randint(t1,t2)
+
+        his_data=self.data[range(_t-t1,_t)]
+        return_data=self.data[range(_t,_t+self.period)]
+
+        # 生成模型
+        p=Portfolio_GA(
+            his_data=his_data,
+            return_data=return_data,
+            money=self.money,
+            s=self.s,
+            random_state=int(np.random.rand()*10000),
+            candidates=self.candidates,
+            max_iter=max_max_iter)
+        
+        p.ga()
+        return p.each_iter_exp_utility,p.each_iter_std
+    
+    def cal_best_candidates(self) -> list:
+        """
+        根据论文方法，选取最佳的候选解
+        还没实现
+
+        随机选择一个时期的数据运行模型，画出期望效用图
+        """
+        if self.random_state is not None:
+            np.random.seed(self.random_state)
+
+        t1=self.t
+        t2=len(self.data)  
+
+        _t=np.random.randint(t1,t2)
+
+    def update_parmaters(self,candidates=None,max_iter=None):
+        """
+        更新参数
+        """
+        if candidates is not None:
+            self.candidates=candidates
+        if max_iter is not None:
+            self.max_iter=max_iter
+
 
     
 # 使用遗传算法计算投资组合
@@ -109,10 +173,14 @@ class Portfolio_GA():
         一个月后股票收益率，用于计算持仓收益
     money: int
         初始金额
-    random_state: int or none
-        随机数种子，可为空
     weights: list or none
         资产权重，若为空则默认等权
+    random_state: int or none
+        随机数种子，可为空
+    candidates: int or none
+        候选解个数，若为空则默认30
+    max_iter: int or none
+        最大迭代次数，若为空则默认10
     n_portfolio: int
         投资组合中资产个数，无需输入
     his_days: int
@@ -122,7 +190,8 @@ class Portfolio_GA():
 
     """
 
-    def __init__(self,his_data,return_data,money,weights=None,s=5,random_state=None):
+    def __init__(self,his_data,return_data,money,weights=None,s=5,
+    random_state=None,candidates=30,max_iter=10):
 
         self.his_data=his_data
         self.his_days=len(his_data)
@@ -140,6 +209,8 @@ class Portfolio_GA():
         self.money=money
         self.s=s
         self.random_state=random_state+1
+        self.candidates=candidates
+        self.max_iter=max_iter
 
     
     def cal_return(self) -> float:
@@ -231,7 +302,7 @@ class Portfolio_GA():
         return np.sum(np.log(assert_each_return)*p)
 
 
-    def ga(self,candidates=30,max_iter=10):
+    def ga(self):
         """
         使用遗传算法计算最佳投资组合
 
@@ -250,6 +321,8 @@ class Portfolio_GA():
 
         if self.random_state is not None:
             np.random.seed(self.random_state)
+        candidates=self.candidates
+        max_iter=self.max_iter
         
         # 生成初始参数
         params=[np.random.dirichlet([1]*self.n_portfolio,1)[0] for i in range(candidates)]
@@ -260,11 +333,21 @@ class Portfolio_GA():
             param=params[i]
             return_p=self._cal_ex_utility_(param)
             fitness_value.append(return_p)
+        
+        # 保存每次迭代选取的最优解，以便选取最优参数
+        each_iter_exp_utility=[]
+        each_iter_std=[]
 
         # 迭代
         for iter in range(max_iter):
             # 适应度排序 从高到低两两交叉
             index=list(np.argsort(fitness_value))[::-1][:int(candidates/2)*2]
+
+            # 选取表现最好的中间结果储存
+            _index = np.argmax(fitness_value)
+            each_iter_exp_utility.append(self._cal_ex_utility_(params[_index]))
+            each_iter_std.append(np.std(np.array(fitness_value)[index]))
+          
 
             for i in [i for i in range(int(candidates/2)*2)][::2]:
                 new_param = (np.array(params[index[i]])+np.array(params[index[i+1]]))/2
@@ -290,7 +373,10 @@ class Portfolio_GA():
                 return_p=self._cal_ex_utility_(new_param)
                 fitness_value.append(return_p)
         
+        self.each_iter_exp_utility=each_iter_exp_utility
+        self.each_iter_std=each_iter_std
+        
         # 选取表现最好的作为结果
-        index = np.argmax(fitness_value)
-        self.weights=np.array(params[index])
+        _index = np.argmax(fitness_value)
+        self.weights=np.array(params[_index])
         return self.cal_return()
