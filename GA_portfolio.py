@@ -20,14 +20,20 @@ class Portfolio_Selection():
         历史数据窗口期
     random_state: int or none
         随机数种子
+    mutate_rate: float, default 1
+        变异率
+    mutate_method: str {'exchange','random_add'}
+        变异方法
+        exchange: 随机交换两个持仓
+        random_add: 随机选取两个持仓 将一个持仓的一部分加入另一个持仓
     candidates: int or none
         候选解个数，若为空则默认30
     max_iter: int or none
         最大迭代次数，若为空则默认10 
     """
 
-    def __init__(self,data,money=1000,s=5,t=60,period=1,
-    random_state=None,candidates=30,max_iter=10):
+    def __init__(self,data,money=1000,s=5,t=60,period=1,mutate_method='random_add',
+    mutate_rate=1.0,random_state=None,candidates=30,max_iter=10):
         self.data=data
         self.money=money
         self.s=s
@@ -35,6 +41,8 @@ class Portfolio_Selection():
         self.period=period
         self.random_state=random_state
         self.is_fit=False
+        self.mutate_rate=mutate_rate
+        self.mutate_method=mutate_method
         self.candidates=candidates
         self.max_iter=max_iter
     
@@ -63,7 +71,7 @@ class Portfolio_Selection():
         exp_return=[]
         weights=[]
 
-        for _t in range(t1,t2,self.period):
+        for _t in range(t1,t2-self.period,self.period):
             # 划分数据集
             his_data=self.data[range(_t-t1,_t)]
             return_data=self.data[range(_t,_t+self.period)]
@@ -80,7 +88,9 @@ class Portfolio_Selection():
                     max_iter=self.max_iter)
                 
                 # 储存结果
-                exp_return.append(p.ga())
+                exp_return.append(p.ga(
+                    mutate_rate=self.mutate_rate,
+                    mutate_method=self.mutate_method))
                 moneys.append(p.cal_money())
                 weights.append(p.get_weights())
 
@@ -143,7 +153,9 @@ class Portfolio_Selection():
             candidates=self.candidates,
             max_iter=max_max_iter)
         
-        p.ga()
+        p.ga(
+            mutate_method=self.mutate_method,
+            mutate_rate=self.mutate_rate)
         return p.each_iter_exp_utility,p.each_iter_std
     
     def cal_best_candidates(self,candidates_list,max_max_iter=50) -> list:
@@ -177,7 +189,9 @@ class Portfolio_Selection():
                 random_state=int(np.random.rand()*10000+i_candidates),
                 candidates=i_candidates,
                 max_iter=max_max_iter)
-            p.ga()
+            p.ga(
+                mutate_method=self.mutate_method,
+                mutate_rate=self.mutate_rate)
             utility_list.append(p.each_iter_exp_utility)
             std_list.append(p.each_iter_std)
         
@@ -185,7 +199,8 @@ class Portfolio_Selection():
 
 
 
-    def update_parmaters(self,candidates=None,max_iter=None):
+    def update_parmaters(self,candidates=None,max_iter=None,
+        mutate_rate=None,mutate_method=None):
         """
         更新参数
         """
@@ -193,7 +208,10 @@ class Portfolio_Selection():
             self.candidates=candidates
         if max_iter is not None:
             self.max_iter=max_iter
-
+        if mutate_rate is not None:
+            self.mutate_rate=mutate_rate
+        if mutate_method is not None:
+            self.mutate_method=mutate_method     
 
     
 # 使用遗传算法计算投资组合
@@ -340,17 +358,19 @@ class Portfolio_GA():
         return np.sum(np.log(assert_each_return)*p)
 
 
-    def ga(self,mutate_rate=1.0):
+    def ga(self,mutate_rate,mutate_method):
         """
         使用遗传算法计算最佳投资组合
 
         Paramters
         ----------
-        candidates: int or none
-            候选解个数，默认30
-        max_iter: int or none
-            最大迭代次数，默认10
-        
+        mutate_rate: float, default 1
+            变异率
+        mutate_method: str {'exchange','random_add'}
+            变异方法
+            exchange: 随机交换两个持仓
+            random_add: 随机选取两个持仓 将一个持仓的一部分加入另一个持仓
+
         Return
         ----------
         return: float
@@ -383,12 +403,13 @@ class Portfolio_GA():
             index=list(np.argsort(fitness_value))[::-1][:int(candidates/2)*2]
 
             # 选取表现最好的中间结果储存
-            _index = index[0]
             each_iter_exp_utility.append(np.mean(np.array(fitness_value)[index]))
             each_iter_std.append(np.std(np.array(fitness_value)[index]))
           
-
+            # 类似于模拟退火
+            # 迭代次数越多变异幅度越小
             mutate_intension=1/(iter+1)
+
             for i in [i for i in range(int(candidates/2)*2)][::2]:
 
                 r1=fitness_value[index[i]]
@@ -403,13 +424,15 @@ class Portfolio_GA():
                     while a == b:
                         b = np.random.randint(0,self.n_portfolio-1,size=1)
 
-                    # 方法一 随机选取两个持仓交换
-                    # new_param[a],new_param[b]=new_param[b],new_param[a]
-                
-                    # 方法二 随机选取两个持仓 将一个持仓的一部分加入另一个持仓
-                    x=np.random.uniform(0,new_param[a]*mutate_intension)
-                    new_param[a]=new_param[a]-x
-                    new_param[b]=new_param[b]+x
+                    if mutate_method=='exchange':
+                        # 方法一 随机选取两个持仓交换
+                        new_param[a],new_param[b]=new_param[b],new_param[a]
+                    
+                    if mutate_method=='random_add':
+                        # 方法二 随机选取两个持仓 将一个持仓的一部分加入另一个持仓
+                        x=np.random.uniform(0,new_param[a]*mutate_intension)
+                        new_param[a]=new_param[a]-x
+                        new_param[b]=new_param[b]+x
 
 
                 new_param=list(new_param)
