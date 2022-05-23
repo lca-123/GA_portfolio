@@ -1,4 +1,3 @@
-from ctypes import util
 import numpy as np
 
 # 使用滑动时间窗口进行投资组合选择
@@ -76,29 +75,31 @@ class Portfolio_Selection():
             his_data=self.data[range(_t-t1,_t)]
             return_data=self.data[range(_t,_t+self.period)]
 
+
+            # 生成模型
+            p=Portfolio_GA(
+                his_data=his_data,
+                return_data=return_data,
+                money=moneys[-1],
+                s=self.s,
+                random_state=int(np.random.rand()*10000),
+                candidates=self.candidates,
+                max_iter=self.max_iter)
+            
+            # 储存结果
             if method=='ga':
-                # 生成模型
-                p=Portfolio_GA(
-                    his_data=his_data,
-                    return_data=return_data,
-                    money=moneys[-1],
-                    s=self.s,
-                    random_state=int(np.random.rand()*10000),
-                    candidates=self.candidates,
-                    max_iter=self.max_iter)
-                
-                # 储存结果
-                exp_return.append(p.ga(
-                    mutate_rate=self.mutate_rate,
-                    mutate_method=self.mutate_method))
-                moneys.append(p.cal_money())
-                weights.append(p.get_weights())
-
+                p.ga(mutate_rate=self.mutate_rate,
+                    mutate_method=self.mutate_method)
             elif method=='markowitz':
-                pass
-
+                p.markowitz()
             elif method=='bayes':
-                pass
+                p.bayes()
+            
+            exp_return.extend(p.cal_return())
+            moneys.extend(p.cal_money())
+            weights.extend(p.get_weights())
+
+
         
         self.is_fit=True
 
@@ -229,6 +230,8 @@ class Portfolio_GA():
         一个月后股票收益率，用于计算持仓收益
     money: int
         初始金额
+    method: str {'ga','markowitz','bayes'}, default 'ga'
+        使用马科维茨、贝叶斯、遗传算法求解
     weights: list or none
         资产权重，若为空则默认等权
     random_state: int or none
@@ -258,8 +261,6 @@ class Portfolio_GA():
             self.weights = np.array(weights)
         else:
             self.weights=weights
-        # if len(return_data) != 1:
-        #     raise Exception('return_data 输入错误，应输入未来一月的收益率情况')
         self.return_data=return_data
         self.return_days=len(return_data)
         self.money=money
@@ -268,23 +269,34 @@ class Portfolio_GA():
         self.candidates=candidates
         self.max_iter=max_iter
 
-    
-    def cal_return(self) -> float:
+    def cal_return(self) -> list:
         """
-        计算投资组合持仓对应时期后的真实对数收益率(月化)
+        计算投资组合持仓对应时期后的真实对数收益率(每个月)
 
-        Return
-        ----------
-        returns: float
-            按照默认持仓一个月后的真实收益率
+        """
+        return np.log(np.sum(np.array(self.weights)*np.exp(np.array(self.return_data)),axis=1))
+    
+    def cal_total_return(self) -> list:
+        """
+        计算投资组合持仓对应时期后的真实对数收益率(从持仓开始累计)
+
         """
         weight_money = self.weights*self.money
-        each_assert_return = np.exp(np.sum(self.return_data,axis=0))
-        total_assert = np.sum(weight_money*each_assert_return)
-        total_assert_return = np.log(total_assert/self.money)
-        return total_assert_return/len(self.return_data)  
+        # each_assert_return = np.exp(np.sum(self.return_data,axis=0))
+        # total_assert = np.sum(weight_money*each_assert_return)
+        # total_assert_return = np.log(total_assert/self.money)
+        # return total_assert_return/len(self.return_data) 
+        total_assert_return = []
+        for i in range(1,self.return_days+1):
+            return_data_i=self.return_data[:i]
+            each_assert_return_i = np.exp(np.sum(return_data_i,axis=0))
+            total_assert_i = np.sum(weight_money*each_assert_return_i)
+            total_assert_return_i = np.log(total_assert_i/self.money)
+            total_assert_return.append(total_assert_return_i)
+        return total_assert_return
+            
 
-    def cal_money(self,money=None) -> float:
+    def cal_money(self,money=None) -> list:
         """
         计算投资组合持仓对应时期后的金额
 
@@ -300,13 +312,13 @@ class Portfolio_GA():
         """
         if money is None:
             money=self.money
-        return money*np.exp(self.cal_return()*len(self.return_data))
+        return money*np.exp(np.array(self.cal_total_return()))
     
     def get_weights(self):
         """
         返回现在的默认持仓
         """
-        return list(self.weights)
+        return [list(self.weights) for i in range(self.return_days)]
 
     def _cal_ex_utility_(self,weights=None,s=None) -> float:
         """
@@ -357,6 +369,37 @@ class Portfolio_GA():
         # 返回期望效用
         return np.sum(np.log(assert_each_return)*p)
 
+    def bayes(self):
+        """
+        使用贝叶斯计算最佳投资组合
+
+        Paramters
+        ----------
+        his_data: numpy.ndarray
+            对数收益率
+            股票历史数据，用于拟合
+        
+        Return
+        ----------
+        weights: 持仓权重
+        """
+        return self.cal_return()
+
+    def markowitz(self):
+        """
+        使用马科维茨计算最佳投资组合
+
+        Paramters
+        ----------
+        his_data: numpy.ndarray
+            对数收益率
+            股票历史数据，用于拟合
+
+        Return
+        ----------
+        weights: 持仓权重
+        """
+        return self.cal_return()
 
     def ga(self,mutate_rate,mutate_method):
         """
