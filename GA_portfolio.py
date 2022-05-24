@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 # 使用滑动时间窗口进行投资组合选择
 class Portfolio_Selection():
@@ -320,7 +321,7 @@ class Portfolio_GA():
         """
         return [list(self.weights) for i in range(self.return_days)]
 
-    def _cal_ex_utility_(self,weights=None,s=None) -> float:
+    def _cal_ex_utility_(self,weights=None,s=None,s_method='average') -> float:
         """
         计算投资组合持仓的期望效用
         根据论文的方法，我们将历史数据随机分为s份，并计算其效用函数的均值
@@ -331,7 +332,10 @@ class Portfolio_GA():
             输入投资组合权重，若为空则使用类内权重
         s: int
             将历史数据分为s份
-
+        s_method: str {'average','random'}
+            如何划分历史数据
+            average: 平均分为s份
+            random: 随机划分
         Return
         ----------
         ex_utility: float
@@ -353,21 +357,24 @@ class Portfolio_GA():
         # 暂时先平均分，后面可以尝试用dirichlet分布随机分
         # a = np.random.dirichlet([1]*s,1)*self.his_days
 
-        # 各期的概率 暂定等权
-        p = np.array([1/s]*s)
+        if s_method=='average':
+            # 各期的概率 暂定等权
+            p = np.array([1/s]*s)
 
-        # 计算各个时期的平均收益率
-        mean_returns = []
-        inc = self.his_days//s 
-        for i in range(s):
-            mean_return = list(np.mean(self.his_data[range(i*inc,(i+1)*inc)],axis=0))
-            mean_returns.append(mean_return)
-        
-        # 计算各期投资组合收益率
-        assert_each_return = np.sum(np.exp(np.array(mean_returns))*weights*self.money,axis=1)
+            # 计算各个时期的平均收益率
+            mean_returns = []
+            inc = self.his_days//s 
+            for i in range(s):
+                mean_return = list(np.mean(self.his_data[range(i*inc,(i+1)*inc)],axis=0))
+                mean_returns.append(mean_return)
+            
+            # 计算各期投资组合收益率
+            assert_each_return = np.sum(np.exp(np.array(mean_returns))*weights*self.money,axis=1)
 
-        # 返回期望效用
-        return np.sum(np.log(assert_each_return)*p)
+            # 返回期望效用
+            return np.sum(np.log(assert_each_return)*p)
+        elif s_method=='random':            
+            pass
 
     def bayes(self):
         """
@@ -383,7 +390,7 @@ class Portfolio_GA():
         ----------
         weights: 持仓权重
         """
-        return self.cal_return()
+        pass
 
     def markowitz(self):
         """
@@ -399,7 +406,8 @@ class Portfolio_GA():
         ----------
         weights: 持仓权重
         """
-        return self.cal_return()
+        pass
+        
 
     def ga(self,mutate_rate,mutate_method):
         """
