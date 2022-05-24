@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import math
 
 # 使用滑动时间窗口进行投资组合选择
 class Portfolio_Selection():
@@ -13,14 +14,12 @@ class Portfolio_Selection():
     money: float, default 1000
         初始金额
     s: int, default 5
-        遗传算法中的期数
+        多状态遗传算法中的状态数
     period: int, default 1
         持仓的持续时间，默认1个月
     t: int, default 60
         历史数据窗口期
-    random_state: int or none
-        随机数种子
-    mutate_rate: float, default 1
+    mutate_rate: float, default 1.0
         变异率
     mutate_method: str {'exchange','random_add'}
         变异方法
@@ -30,6 +29,8 @@ class Portfolio_Selection():
         候选解个数，若为空则默认30
     max_iter: int or none
         最大迭代次数，若为空则默认10 
+    random_state: int or none
+        随机数种子
     """
 
     def __init__(self,data,money=1000,s=5,t=60,period=1,mutate_method='random_add',
@@ -46,7 +47,7 @@ class Portfolio_Selection():
         self.candidates=candidates
         self.max_iter=max_iter
     
-    def fit(self,method='ga'):
+    def fit(self,method='ga',s_method='random'):
         """"
         拟合模型
 
@@ -54,6 +55,10 @@ class Portfolio_Selection():
         ----------
         method: str {'ga','markowitz','bayes'}, default 'ga'
             使用马科维茨、贝叶斯、遗传算法求解
+        s_method: str {'average','random'}
+            如何划分历史数据
+            average: 平均分为s份
+            random: 随机划分
 
         Returns
         ----------
@@ -83,6 +88,7 @@ class Portfolio_Selection():
                 return_data=return_data,
                 money=moneys[-1],
                 s=self.s,
+                s_method=s_method,
                 random_state=int(np.random.rand()*10000),
                 candidates=self.candidates,
                 max_iter=self.max_iter)
@@ -133,6 +139,11 @@ class Portfolio_Selection():
         ----------
         max_max_iter: int, default 50
             迭代次数上限
+        
+        Return
+        ----------
+        tuple: (each_iter_exp_utility,each_iter_std)
+            随着迭代次数增加的平均期望效用和标准差数据
         """
         if self.random_state is not None:
             np.random.seed(self.random_state)
@@ -163,9 +174,19 @@ class Portfolio_Selection():
     def cal_best_candidates(self,candidates_list,max_max_iter=50) -> list:
         """
         根据论文方法，选取最佳的候选解
-        还没实现
-
         随机选择一个时期的数据运行模型，画出期望效用图
+
+        Paramters
+        ----------
+        candidates_list: list
+            试验的候选解个数列表
+        max_max_iter: int, default 50
+            迭代次数上限
+        
+        Return
+        ----------
+        tuple: (utility_list,std_list)
+            每个候选解个数，随着迭代次数增加的平均期望效用和标准差数据
         """
         if self.random_state is not None:
             np.random.seed(self.random_state)
@@ -228,29 +249,30 @@ class Portfolio_GA():
         股票历史数据，用于拟合
     return_data: numpy.ndarray
         对数收益率
-        一个月后股票收益率，用于计算持仓收益
+        n个月后股票收益率，用于计算持仓收益
     money: int
         初始金额
-    method: str {'ga','markowitz','bayes'}, default 'ga'
-        使用马科维茨、贝叶斯、遗传算法求解
     weights: list or none
         资产权重，若为空则默认等权
-    random_state: int or none
-        随机数种子，可为空
-    candidates: int or none
-        候选解个数，若为空则默认30
-    max_iter: int or none
-        最大迭代次数，若为空则默认10
+    s_method: str {'average','random'}
+        如何划分历史数据
+        average: 平均分为s份
+        random: 随机划分
     n_portfolio: int
         投资组合中资产个数，无需输入
     his_days: int
         历史数据期数,无需输入
     return_days: int
         预测数据期数，无需输入
-
+    candidates: int or none
+        候选解个数，若为空则默认30
+    max_iter: int or none
+        最大迭代次数，若为空则默认10
+    random_state: int or none
+        随机数种子，可为空
     """
 
-    def __init__(self,his_data,return_data,money,weights=None,s=5,
+    def __init__(self,his_data,return_data,money,weights=None,s=5,s_method='average',
     random_state=None,candidates=30,max_iter=10):
 
         self.his_data=his_data
@@ -266,6 +288,7 @@ class Portfolio_GA():
         self.return_days=len(return_data)
         self.money=money
         self.s=s
+        self.s_method=s_method
         self.random_state=random_state+1
         self.candidates=candidates
         self.max_iter=max_iter
@@ -274,12 +297,21 @@ class Portfolio_GA():
         """
         计算投资组合持仓对应时期后的真实对数收益率(每个月)
 
+        Return
+        ----------
+        exp_returns: list
+            持有对应时期的月化收益率
         """
         return np.log(np.sum(np.array(self.weights)*np.exp(np.array(self.return_data)),axis=1))
     
     def cal_total_return(self) -> list:
         """
         计算投资组合持仓对应时期后的真实对数收益率(从持仓开始累计)
+
+        Return
+        ----------
+        exp_total_returns: list
+            持有对应时期的累计收益率
 
         """
         weight_money = self.weights*self.money
@@ -308,8 +340,8 @@ class Portfolio_GA():
         
         Return
         --------
-        money_return: float
-            以默认持仓一个月后的金额
+        money_return: list
+            以默认持仓n个月后的金额
         """
         if money is None:
             money=self.money
@@ -318,10 +350,15 @@ class Portfolio_GA():
     def get_weights(self):
         """
         返回现在的默认持仓
+
+        Return
+        ----------
+        weights_list: list[list]
+            若持仓多期，则返回对应期数个持仓（为了便于计算）
         """
         return [list(self.weights) for i in range(self.return_days)]
 
-    def _cal_ex_utility_(self,weights=None,s=None,s_method='average') -> float:
+    def _cal_ex_utility_(self,weights=None,s=None) -> float:
         """
         计算投资组合持仓的期望效用
         根据论文的方法，我们将历史数据随机分为s份，并计算其效用函数的均值
@@ -332,10 +369,7 @@ class Portfolio_GA():
             输入投资组合权重，若为空则使用类内权重
         s: int
             将历史数据分为s份
-        s_method: str {'average','random'}
-            如何划分历史数据
-            average: 平均分为s份
-            random: 随机划分
+        
         Return
         ----------
         ex_utility: float
@@ -354,28 +388,45 @@ class Portfolio_GA():
         if s is None:
              s=self.s
         
-        # 暂时先平均分，后面可以尝试用dirichlet分布随机分
-        # a = np.random.dirichlet([1]*s,1)*self.his_days
 
-        if s_method=='average':
-            # 各期的概率 暂定等权
+        # 计算各期概率
+        if self.s_method=='average':
+            # 各期等权概率
             p = np.array([1/s]*s)
 
-            # 计算各个时期的平均收益率
-            mean_returns = []
-            inc = self.his_days//s 
-            for i in range(s):
-                mean_return = list(np.mean(self.his_data[range(i*inc,(i+1)*inc)],axis=0))
-                mean_returns.append(mean_return)
+            inc = self.his_days//s
+            split=[0]
+            for i in range(s-1):
+                split.append(split[-1]+inc)
+            split.append(self.his_days-1)
             
-            # 计算各期投资组合收益率
-            assert_each_return = np.sum(np.exp(np.array(mean_returns))*weights*self.money,axis=1)
+        elif self.s_method=='random':  
+            
+            # 从dirichlet分布生成随机概率
+            # 为了防止出现极端值，如果最短天数小于2则重新抽样
+            p = np.random.dirichlet([1]*s,1)[0]
+            while np.min(p*self.his_days) < 2:
+                p = np.random.dirichlet([1]*s,1)[0]
+            split=[0]
+            for i in range(s-1):
+                temp=split[-1]+math.floor(p[i]*self.his_days)
+                split.append(temp)
+            split.append(self.his_days-1)
 
-            # 返回期望效用
-            return np.sum(np.log(assert_each_return)*p)
-        elif s_method=='random':            
-            pass
+        # 计算各个时期的平均收益率
+        mean_returns = []
 
+        for i in range(s):
+            mean_return = list(np.mean(self.his_data[range(split[i],split[i+1])],axis=0))
+            mean_returns.append(mean_return)
+
+        # 计算各期投资组合收益率
+        assert_each_return = np.sum(np.exp(np.array(mean_returns))*weights*self.money,axis=1)           
+
+        # 返回期望效用
+        return np.sum(np.log(assert_each_return)*p)
+
+        
     def bayes(self):
         """
         使用贝叶斯计算最佳投资组合
@@ -424,7 +475,7 @@ class Portfolio_GA():
 
         Return
         ----------
-        return: float
+        return: list
             遗传算法求解的投资组合持仓一个月后的真实对数收益率(月化)
         """
 
