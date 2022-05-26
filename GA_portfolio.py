@@ -33,7 +33,8 @@ class Portfolio_Selection():
         随机数种子
     """
 
-    def __init__(self,data,money=1000,s=5,t=60,period=1,mutate_method='random_add',
+    def __init__(self,data,money=1000,s=5,t=60,period=1,
+    mutate_method='random_add',init_method='dirichlet',
     mutate_rate=1.0,random_state=None,candidates=30,max_iter=10):
         self.data=data
         self.money=money
@@ -44,6 +45,7 @@ class Portfolio_Selection():
         self.is_fit=False
         self.mutate_rate=mutate_rate
         self.mutate_method=mutate_method
+        self.init_method=init_method
         self.candidates=candidates
         self.max_iter=max_iter
     
@@ -59,7 +61,10 @@ class Portfolio_Selection():
             如何划分历史数据
             average: 平均分为s份
             random: 随机划分
-
+        init_method: str {'dirichlet','softmax'}
+            如何生成初始候选解
+            dirichlet: 从dirichlet分布中抽样
+            softmax: 使用softmax函数映射
         Returns
         ----------
         tuple: (moneys,exp_return,weights)
@@ -90,6 +95,7 @@ class Portfolio_Selection():
                 s=self.s,
                 s_method=s_method,
                 random_state=int(np.random.rand()*10000),
+                init_method=self.init_method,
                 candidates=self.candidates,
                 max_iter=self.max_iter)
             
@@ -163,6 +169,7 @@ class Portfolio_Selection():
             money=self.money,
             s=self.s,
             random_state=int(np.random.rand()*10000),
+            init_method=self.init_method,
             candidates=self.candidates,
             max_iter=max_max_iter)
         
@@ -211,6 +218,7 @@ class Portfolio_Selection():
                 s=self.s,
                 random_state=int(np.random.rand()*10000+i_candidates),
                 candidates=i_candidates,
+                init_method=self.init_method,
                 max_iter=max_max_iter)
             p.ga(
                 mutate_method=self.mutate_method,
@@ -258,6 +266,10 @@ class Portfolio_GA():
         如何划分历史数据
         average: 平均分为s份
         random: 随机划分
+    init_method: str {'dirichlet','softmax'}
+        如何生成初始候选解
+        dirichlet: 从dirichlet分布中抽样
+        softmax: 使用softmax函数映射
     n_portfolio: int
         投资组合中资产个数，无需输入
     his_days: int
@@ -272,7 +284,8 @@ class Portfolio_GA():
         随机数种子，可为空
     """
 
-    def __init__(self,his_data,return_data,money,weights=None,s=5,s_method='average',
+    def __init__(self,his_data,return_data,money,weights=None,s=5,
+    s_method='average',init_method='dirichlet',
     random_state=None,candidates=30,max_iter=10):
 
         self.his_data=his_data
@@ -289,6 +302,7 @@ class Portfolio_GA():
         self.money=money
         self.s=s
         self.s_method=s_method
+        self.init_method=init_method
         self.random_state=random_state+1
         self.candidates=candidates
         self.max_iter=max_iter
@@ -315,10 +329,6 @@ class Portfolio_GA():
 
         """
         weight_money = self.weights*self.money
-        # each_assert_return = np.exp(np.sum(self.return_data,axis=0))
-        # total_assert = np.sum(weight_money*each_assert_return)
-        # total_assert_return = np.log(total_assert/self.money)
-        # return total_assert_return/len(self.return_data) 
         total_assert_return = []
         for i in range(1,self.return_days+1):
             return_data_i=self.return_data[:i]
@@ -388,7 +398,6 @@ class Portfolio_GA():
         if s is None:
              s=self.s
         
-
         # 计算各期概率
         if self.s_method=='average':
             # 各期等权概率
@@ -457,8 +466,26 @@ class Portfolio_GA():
         ----------
         weights: 持仓权重
         """
-        pass
-        
+        cov=pd.DataFrame(self.his_data).cov().values
+        inv=np.linalg.inv(cov)
+        r=np.mean(self.his_data,axis=0)
+        a=np.sum(inv*r)
+        b=np.sum(np.sum(inv*r,axis=0)*r)
+        c=np.sum(inv)
+        d=b*c-a*a
+        z0=(b*np.sum(inv,axis=0)-a*np.sum(inv*r,axis=0))/d
+        z1=z0+(c*np.sum(inv*r,axis=0)-a*np.sum(inv,axis=0))/d
+        self.weights=z1
+        return self.weights
+
+    def softmax(self,arr):
+        """
+        softmax映射函数
+        """ 
+        if isinstance(arr,np.ndarray)==False:
+            arr=np.array(arr)
+        exps=np.exp(arr)
+        return exps/np.sum(exps)
 
     def ga(self,mutate_rate,mutate_method):
         """
@@ -486,8 +513,11 @@ class Portfolio_GA():
         max_iter=self.max_iter
         
         # 生成初始参数
-        params=[np.random.dirichlet([0.5]*self.n_portfolio,1)[0] for i in range(candidates)]
-
+        if self.init_method=='dirichlet':
+            params=[np.random.dirichlet([0.5]*self.n_portfolio,1)[0] for i in range(candidates)]
+        elif self.init_method=='softmax':
+            params=[self.softmax(np.random.randn(self.n_portfolio)) for i in range(candidates)]
+        
         # 计算初始适应函数
         fitness_value=[]
         for i in range(candidates):
