@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import math
+from cvxopt import solvers, matrix
 
 # 使用滑动时间窗口进行投资组合选择
 class Portfolio_Selection():
@@ -450,7 +451,35 @@ class Portfolio_GA():
         ----------
         weights: 持仓权重
         """
-        pass
+        mu = np.mean(self.his_data,axis = 0)
+        cov = pd.DataFrame(self.his_data).cov().values
+        inv = np.linalg.inv(cov)
+
+        # 最小方差投资组合的实现 
+        P = matrix(cov)   
+        q = matrix([0.0 for i in range(self.n_portfolio)])
+        G = matrix(-np.identity(self.n_portfolio))
+        h = matrix([0.0 for i in range(self.n_portfolio)])
+        A = matrix([[1.0] for i in range(self.n_portfolio)])
+        b = matrix(1.0)
+        sol = solvers.qp(P,q,G,h,A,b)     
+        weights_min =  np.array(sol['x']).T    
+
+        # 均值方差投资组合的实现 
+        P = matrix(cov)  
+        q = matrix(-mu.T)
+        G = matrix(-np.identity(self.n_portfolio))
+        h = matrix([0.0 for i in range(self.n_portfolio)])
+        A = matrix([[1.0] for i in range(self.n_portfolio)])
+        b = matrix(1.0)
+        sol = solvers.qp(P,q,G,h,A,b)     
+        weights_mv =  np.array(sol['x']).T      
+        T = self.his_days
+        temp = ((self.n_portfolio - 2)/T)/((mu.T - weights_min @ mu.T).T @ inv @ (mu.T - weights_min @ mu.T)) 
+        phi = min(1 , temp)
+
+        self.weights = (1 - phi) * weights_mv + phi * weights_min
+        return self.cal_return()
 
     def markowitz(self):
         """
@@ -466,17 +495,20 @@ class Portfolio_GA():
         ----------
         weights: 持仓权重
         """
-        cov=pd.DataFrame(self.his_data).cov().values
-        inv=np.linalg.inv(cov)
-        r=np.mean(self.his_data,axis=0)
-        a=np.sum(inv*r)
-        b=np.sum(np.sum(inv*r,axis=0)*r)
-        c=np.sum(inv)
-        d=b*c-a*a
-        z0=(b*np.sum(inv,axis=0)-a*np.sum(inv*r,axis=0))/d
-        z1=z0+(c*np.sum(inv*r,axis=0)-a*np.sum(inv,axis=0))/d
-        self.weights=z1
-        return self.weights
+        mu = np.mean(self.his_data,axis = 0)
+        cov = pd.DataFrame(self.his_data).cov().values
+
+
+        P = matrix(cov)   # matrix里区分int和double，所以数字后面都需要加小数点
+        q = matrix(-mu.T)
+        G = matrix(-np.identity(self.n_portfolio))
+        h = matrix([0.0 for i in range(self.n_portfolio)])
+        A = matrix([[1.0] for i in range(self.n_portfolio)])
+        b = matrix(1.0)
+        sol = solvers.qp(P,q,G,h,A,b)
+
+        self.weights =  np.array(sol['x']).T      
+        return self.cal_return()
 
     def softmax(self,arr):
         """
