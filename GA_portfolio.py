@@ -245,7 +245,7 @@ class Portfolio_Selection():
         if mutate_method is not None:
             self.mutate_method=mutate_method     
 
-    
+
 # 使用遗传算法计算投资组合
 class Portfolio_GA():
     """
@@ -411,7 +411,6 @@ class Portfolio_GA():
             split.append(self.his_days-1)
             
         elif self.s_method=='random':  
-            
             # 从dirichlet分布生成随机概率
             # 为了防止出现极端值，如果最短天数小于2则重新抽样
             p = np.random.dirichlet([1]*s,1)[0]
@@ -449,33 +448,34 @@ class Portfolio_GA():
         
         Return
         ----------
-        weights: 持仓权重
+        return: list
+            贝叶斯算法求解的投资组合持仓一个月后的真实对数收益率(月化)
         """
         mu = np.mean(self.his_data,axis = 0)
         cov = pd.DataFrame(self.his_data).cov().values
         inv = np.linalg.inv(cov)
 
         # 最小方差投资组合的实现 
-        P = matrix(cov)   
+        p = matrix(cov)   
         q = matrix([0.0 for i in range(self.n_portfolio)])
-        G = matrix(-np.identity(self.n_portfolio))
+        g = matrix(-np.identity(self.n_portfolio))
         h = matrix([0.0 for i in range(self.n_portfolio)])
-        A = matrix([[1.0] for i in range(self.n_portfolio)])
+        a = matrix([[1.0] for i in range(self.n_portfolio)])
         b = matrix(1.0)
-        sol = solvers.qp(P,q,G,h,A,b)     
+        sol = solvers.qp(p,q,g,h,a,b)     
         weights_min =  np.array(sol['x']).T    
 
         # 均值方差投资组合的实现 
-        P = matrix(cov)  
+        p = matrix(cov)  
         q = matrix(-mu.T)
-        G = matrix(-np.identity(self.n_portfolio))
+        g = matrix(-np.identity(self.n_portfolio))
         h = matrix([0.0 for i in range(self.n_portfolio)])
-        A = matrix([[1.0] for i in range(self.n_portfolio)])
+        a = matrix([[1.0] for i in range(self.n_portfolio)])
         b = matrix(1.0)
-        sol = solvers.qp(P,q,G,h,A,b)     
+        sol = solvers.qp(p,q,g,h,a,b)     
         weights_mv =  np.array(sol['x']).T      
-        T = self.his_days
-        temp = ((self.n_portfolio - 2)/T)/((mu.T - weights_min @ mu.T).T @ inv @ (mu.T - weights_min @ mu.T)) 
+        t = self.his_days
+        temp = ((self.n_portfolio - 2)/t)/((mu.T - weights_min @ mu.T).T @ inv @ (mu.T - weights_min @ mu.T)) 
         phi = min(1 , temp)
 
         self.weights = (1 - phi) * weights_mv + phi * weights_min
@@ -493,19 +493,20 @@ class Portfolio_GA():
 
         Return
         ----------
-        weights: 持仓权重
+        return: list
+            马科维茨算法求解的投资组合持仓一个月后的真实对数收益率(月化)
         """
         mu = np.mean(self.his_data,axis = 0)
         cov = pd.DataFrame(self.his_data).cov().values
 
 
-        P = matrix(cov)   # matrix里区分int和double，所以数字后面都需要加小数点
+        p = matrix(cov)   # matrix里区分int和double，所以数字后面都需要加小数点
         q = matrix(-mu.T)
-        G = matrix(-np.identity(self.n_portfolio))
+        g = matrix(-np.identity(self.n_portfolio))
         h = matrix([0.0 for i in range(self.n_portfolio)])
-        A = matrix([[1.0] for i in range(self.n_portfolio)])
+        a = matrix([[1.0] for i in range(self.n_portfolio)])
         b = matrix(1.0)
-        sol = solvers.qp(P,q,G,h,A,b)
+        sol = solvers.qp(p,q,g,h,a,b)
 
         self.weights =  np.array(sol['x']).T      
         return self.cal_return()
@@ -546,9 +547,11 @@ class Portfolio_GA():
         
         # 生成初始参数
         if self.init_method=='dirichlet':
-            params=[np.random.dirichlet([0.5]*self.n_portfolio,1)[0] for i in range(candidates)]
+            params=[np.random.dirichlet([0.5]*self.n_portfolio,1)[0] 
+                for i in range(candidates)]
         elif self.init_method=='softmax':
-            params=[self.softmax(np.random.randn(self.n_portfolio)) for i in range(candidates)]
+            params=[self.softmax(np.random.randn(self.n_portfolio)) 
+                for i in range(candidates)]
         
         # 计算初始适应函数
         fitness_value=[]
@@ -579,7 +582,8 @@ class Portfolio_GA():
                 r1=fitness_value[index[i]]
                 r2=fitness_value[index[i+1]]
                 
-                new_param = (np.array(params[index[i]])*r1+np.array(params[index[i+1]])*r1)/(r1+r2)
+                new_param = (np.array(params[index[i]])*r1+
+                    np.array(params[index[i+1]])*r1)/(r1+r2)
 
                 # 变异
                 _i=np.random.uniform()
